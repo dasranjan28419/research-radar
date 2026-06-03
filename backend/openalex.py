@@ -105,6 +105,18 @@ def get_work(work_id: str) -> dict | None:
         return None
 
 
+def get_author(author_id: str) -> dict | None:
+    """Fetch an author record by OpenAlex id (carries summary_stats:
+    h_index, i10_index, 2yr_mean_citedness, plus works/citation counts)."""
+    if not author_id:
+        return None
+    aid = author_id.split("/")[-1]
+    try:
+        return _get(f"/authors/{aid}")
+    except requests.HTTPError:
+        return None
+
+
 def get_source(source_id: str) -> dict | None:
     """Fetch a journal ('source') record by its OpenAlex id."""
     if not source_id:

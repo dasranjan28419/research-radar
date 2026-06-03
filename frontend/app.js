@@ -7,6 +7,7 @@ let paperChart = null;
 let journalChart = null;
 let cmpPaperChart = null;
 let cmpJournalChart = null;
+let authorChart = null;
 
 const COLOR_A = "#4f9dff"; // paper / side A
 const COLOR_B = "#ff7a59"; // journal / side B
@@ -18,10 +19,12 @@ const enabledFeatures = {
   paper: new Set([
     "Citation Impact", "Citation Velocity", "Field Impact (FWCI)",
     "Reference Depth", "Collaboration Reach", "Recency", "Open Access",
+    "Team Size", "Topic Breadth", "Recent Momentum",
   ]),
   journal: new Set([
     "Impact Factor", "h-index", "Citation Volume", "Geography Reach",
     "Educator Reach", "Discipline Fit", "Open Access",
+    "i10 Index", "Productivity", "Topic Diversity",
   ]),
 };
 
@@ -44,13 +47,15 @@ function filterRadar(radar, kind) {
   const enabled = enabledFeatures[kind];
   const labels = [];
   const values = [];
+  const raw_display = [];
   radar.labels.forEach((lab, i) => {
     if (enabled.has(lab)) {
       labels.push(lab);
       values.push(radar.values[i]);
+      if (radar.raw_display) raw_display.push(radar.raw_display[i]);
     }
   });
-  return { ...radar, labels, values };
+  return { ...radar, labels, values, raw_display };
 }
 
 // redraw whichever results view is currently visible, using the stored payload
@@ -77,6 +82,7 @@ document.querySelectorAll(".tab").forEach((tab) => {
     $("compareSearch").classList.toggle("hidden", !compare);
     $("results").classList.add("hidden");
     $("compareResults").classList.add("hidden");
+    $("authorPanel").classList.add("hidden");
     $("candidates").classList.add("hidden");
     setStatus("");
   });
@@ -165,28 +171,40 @@ function drawOverlay(canvasId, existing, radarA, radarB, labelA, labelB) {
     data: {
       labels: radarA.labels,
       datasets: [
-        dataset(labelA, radarA.values, COLOR_A),
-        dataset(labelB, radarB.values, COLOR_B),
+        dataset(labelA, radarA.values, COLOR_A, radarA.raw_display),
+        dataset(labelB, radarB.values, COLOR_B, radarB.raw_display),
       ],
     },
     options: {
       responsive: true,
-      plugins: { legend: { labels: { color: "#cfd6ff" } } },
+      plugins: {
+        legend: { labels: { color: "#cfd6ff" } },
+        tooltip: { callbacks: { label: pctTooltip } },
+      },
       scales: { r: radarScale() },
     },
   });
 }
 
-function dataset(label, values, color) {
+function dataset(label, values, color, rawDisplay) {
   return {
     label,
     data: values,
+    rawDisplay: rawDisplay || [],
     fill: true,
     backgroundColor: hexToRgba(color, 0.14),
     borderColor: color,
     pointBackgroundColor: color,
     borderWidth: 2,
   };
+}
+
+// Tooltip line: "<series>: 85% (3,012 citations)" — pairs the percentage shown
+// on the axis with the underlying raw value so the two always reconcile.
+function pctTooltip(ctx) {
+  const raw = ctx.dataset.rawDisplay && ctx.dataset.rawDisplay[ctx.dataIndex];
+  const base = `${ctx.dataset.label}: ${ctx.formattedValue}%`;
+  return raw ? `${base} (${raw})` : base;
 }
 
 // side-by-side numeric comparison of every axis
@@ -217,6 +235,7 @@ async function run() {
   if (!q) return;
   $("candidates").classList.add("hidden");
   $("results").classList.add("hidden");
+  $("authorPanel").classList.add("hidden");
   setStatus("Searching the scholarly graph…");
   searchBtn.disabled = true;
 
@@ -315,7 +334,62 @@ function render(data) {
     $("journalTable").innerHTML = "";
   }
 
+  renderAuthors(data.authors);
+
   $("results").classList.remove("hidden");
+}
+
+// ---- author panel: overlay the 1st author and corresponding author ----
+function renderAuthors(authors) {
+  const panel = $("authorPanel");
+  const entries = [];
+  const legend = [];
+
+  if (authors && authors.first && authors.first.radar) {
+    entries.push({ radar: authors.first.radar, color: COLOR_A, label: shortName(authors.first.name) });
+    legend.push(`<span class="dot a"></span>${escapeHtml(authors.first.role)}: ${escapeHtml(authors.first.name || "—")}`);
+  }
+  if (authors && authors.corresponding && authors.corresponding.radar) {
+    entries.push({ radar: authors.corresponding.radar, color: COLOR_B, label: shortName(authors.corresponding.name) });
+    legend.push(`<span class="dot b"></span>${escapeHtml(authors.corresponding.role)}: ${escapeHtml(authors.corresponding.name || "—")}`);
+  }
+
+  if (!entries.length) {
+    if (authorChart) { authorChart.destroy(); authorChart = null; }
+    panel.classList.add("hidden");
+    return;
+  }
+
+  $("authorLegend").innerHTML = legend.join("<br>");
+  drawAuthors(entries);
+  panel.classList.remove("hidden");
+}
+
+// one radar, one dataset per author (1 or 2), sharing the 5 author axes
+function drawAuthors(entries) {
+  if (authorChart) authorChart.destroy();
+  const ctx = $("authorChart").getContext("2d");
+  authorChart = new Chart(ctx, {
+    type: "radar",
+    data: {
+      labels: entries[0].radar.labels,
+      datasets: entries.map((e) => dataset(e.label, e.radar.values, e.color, e.radar.raw_display)),
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { labels: { color: "#cfd6ff" } },
+        tooltip: { callbacks: { label: pctTooltip } },
+      },
+      scales: { r: radarScale() },
+    },
+  });
+  return authorChart;
+}
+
+function shortName(name) {
+  const n = name || "Unknown";
+  return n.length > 22 ? n.slice(0, 22) + "…" : n;
 }
 
 function drawRadar(canvasId, existing, radar, color) {
@@ -327,8 +401,9 @@ function drawRadar(canvasId, existing, radar, color) {
       labels: radar.labels,
       datasets: [
         {
-          label: "Score (0-100)",
+          label: "% of max",
           data: radar.values,
+          rawDisplay: radar.raw_display || [],
           fill: true,
           backgroundColor: hexToRgba(color, 0.18),
           borderColor: color,
@@ -339,7 +414,10 @@ function drawRadar(canvasId, existing, radar, color) {
     },
     options: {
       responsive: true,
-      plugins: { legend: { display: false } },
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: pctTooltip } },
+      },
       scales: { r: radarScale() },
     },
   });
@@ -349,7 +427,12 @@ function radarScale() {
   return {
     min: 0,
     max: 100,
-    ticks: { stepSize: 25, color: "#7e87b3", backdropColor: "transparent" },
+    ticks: {
+      stepSize: 25,
+      color: "#7e87b3",
+      backdropColor: "transparent",
+      callback: (v) => v + "%",
+    },
     grid: { color: "#2c3257" },
     angleLines: { color: "#2c3257" },
     pointLabels: { color: "#cfd6ff", font: { size: 11 } },

@@ -34,6 +34,9 @@
       <label class="feature-toggle"><input type="checkbox" data-kind="paper" value="Collaboration Reach" checked /> Collaboration Reach</label>
       <label class="feature-toggle"><input type="checkbox" data-kind="paper" value="Recency" checked /> Recency</label>
       <label class="feature-toggle"><input type="checkbox" data-kind="paper" value="Open Access" checked /> Open Access</label>
+      <label class="feature-toggle"><input type="checkbox" data-kind="paper" value="Team Size" checked /> Team Size</label>
+      <label class="feature-toggle"><input type="checkbox" data-kind="paper" value="Topic Breadth" checked /> Topic Breadth</label>
+      <label class="feature-toggle"><input type="checkbox" data-kind="paper" value="Recent Momentum" checked /> Recent Momentum</label>
     </div>
 
     <div class="feature-group">
@@ -45,6 +48,9 @@
       <label class="feature-toggle"><input type="checkbox" data-kind="journal" value="Educator Reach" checked /> Educator Reach</label>
       <label class="feature-toggle"><input type="checkbox" data-kind="journal" value="Discipline Fit" checked /> Discipline Fit</label>
       <label class="feature-toggle"><input type="checkbox" data-kind="journal" value="Open Access" checked /> Open Access</label>
+      <label class="feature-toggle"><input type="checkbox" data-kind="journal" value="i10 Index" checked /> i10 Index</label>
+      <label class="feature-toggle"><input type="checkbox" data-kind="journal" value="Productivity" checked /> Productivity</label>
+      <label class="feature-toggle"><input type="checkbox" data-kind="journal" value="Topic Diversity" checked /> Topic Diversity</label>
     </div>
   </aside>
 
@@ -126,6 +132,17 @@
   </main>
 
   </div><!-- /main-col -->
+
+  <!-- RIGHT TAB: 1st-author vs corresponding-author overlay -->
+  <aside class="author-panel hidden" id="authorPanel">
+    <span class="badge author">Authors</span>
+    <h3 class="sidebar-title">Author Impact</h3>
+    <p class="sidebar-sub">First author vs corresponding author, on the five
+      most-cited author metrics.</p>
+    <p id="authorLegend" class="meta"></p>
+    <canvas id="authorChart"></canvas>
+  </aside>
+
   </div><!-- /layout -->
 
   <footer>

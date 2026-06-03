@@ -56,7 +56,7 @@ button:disabled { opacity: 0.5; cursor: wait; }
   display: flex;
   align-items: flex-start;
   gap: 1.2rem;
-  max-width: 1460px;
+  max-width: 1680px;
   margin: 0 auto;
   padding: 0 1rem;
 }
@@ -72,6 +72,20 @@ button:disabled { opacity: 0.5; cursor: wait; }
   padding: 1.1rem 1.1rem 1.3rem;
   margin-top: 1.2rem;
 }
+
+/* right tab: author-impact radar */
+.author-panel {
+  flex: 0 0 280px;
+  position: sticky;
+  top: 1rem;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 1.1rem 1.1rem 1.3rem;
+  margin-top: 1.2rem;
+}
+.author-panel .sidebar-title { margin-top: 0.5rem; }
+.author-panel #authorLegend { margin: 0.2rem 0 0.6rem; line-height: 1.5; }
 .sidebar-title { margin: 0 0 0.2rem; font-size: 1.05rem; }
 .sidebar-sub { margin: 0 0 1rem; color: var(--muted); font-size: 0.8rem; line-height: 1.4; }
 
@@ -97,7 +111,8 @@ button:disabled { opacity: 0.5; cursor: wait; }
 
 @media (max-width: 880px) {
   .layout { flex-direction: column; }
-  .sidebar { flex-basis: auto; width: 100%; position: static; }
+  .sidebar,
+  .author-panel { flex-basis: auto; width: 100%; position: static; }
 }
 
 .tabs {
@@ -176,6 +191,7 @@ button:disabled { opacity: 0.5; cursor: wait; }
 }
 .badge.paper { background: rgba(79,157,255,0.18); color: var(--paper); }
 .badge.journal { background: rgba(255,122,89,0.18); color: var(--journal); }
+.badge.author { background: rgba(123,107,255,0.18); color: #b3a7ff; }
 
 .facts { width: 100%; border-collapse: collapse; margin-top: 0.8rem; font-size: 0.85rem; }
 .facts td { padding: 0.32rem 0.2rem; border-top: 1px solid var(--line); }

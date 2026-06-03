@@ -84,10 +84,8 @@ def _build_payload(work: dict) -> dict:
                 "sampled_articles": (sample or {}).get("sampled"),
             }
 
-    authors = [
-        a.get("author", {}).get("display_name")
-        for a in (work.get("authorships") or [])
-    ]
+    authorships = work.get("authorships") or []
+    authors = [a.get("author", {}).get("display_name") for a in authorships]
 
     return {
         "paper": {
@@ -99,6 +97,59 @@ def _build_payload(work: dict) -> dict:
             "radar": paper_payload,
         },
         "journal": {"meta": journal_meta, "radar": journal_payload},
+        "authors": _author_payload(authorships),
+    }
+
+
+def _author_payload(authorships: list[dict]) -> dict:
+    """Profile the first author and the corresponding author of a work.
+
+    Each is resolved to its OpenAlex author record and turned into a 5-axis
+    radar so the frontend can overlay the two. If the work flags no
+    corresponding author, the last (senior) author stands in by convention.
+    Author lookups are best-effort: a failure just yields a null radar.
+    """
+    if not authorships:
+        return {"first": None, "corresponding": None}
+
+    first_au = next(
+        (a for a in authorships if a.get("author_position") == "first"),
+        authorships[0],
+    )
+    corr_au = next((a for a in authorships if a.get("is_corresponding")), None)
+    corr_role = "Corresponding author"
+    if corr_au is None:
+        corr_au = next(
+            (a for a in authorships if a.get("author_position") == "last"),
+            authorships[-1],
+        )
+        corr_role = "Senior author (last)"
+
+    cache: dict[str, dict | None] = {}
+
+    def build(authorship: dict | None, role: str) -> dict | None:
+        if not authorship:
+            return None
+        a = authorship.get("author") or {}
+        aid = a.get("id")
+        record = None
+        if aid:
+            if aid not in cache:
+                try:
+                    cache[aid] = openalex.get_author(aid)
+                except Exception:  # noqa: BLE001 - author data is best-effort
+                    cache[aid] = None
+            record = cache[aid]
+        return {
+            "name": a.get("display_name"),
+            "role": role,
+            "openalex_id": aid.split("/")[-1] if aid else None,
+            "radar": metrics.author_radar(record) if record else None,
+        }
+
+    return {
+        "first": build(first_au, "First author"),
+        "corresponding": build(corr_au, corr_role),
     }
 
 

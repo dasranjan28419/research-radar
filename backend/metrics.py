@@ -48,6 +48,24 @@ def _ratio_score(value: float, ceiling: float) -> float:
     return _clamp(value / ceiling * 100)
 
 
+def _unpack(axes: dict) -> dict:
+    """
+    Turn an ordered ``label -> (score, raw_display)`` mapping into the radar
+    payload arrays.
+
+    Every radar value is a *percentage of that metric's reference maximum*
+    (the ceiling passed to the score helpers), so the chart axis is a clean
+    0-100%. ``raw_display`` carries the underlying real value for each axis
+    (e.g. "3,012 citations") so a tooltip can show the % and the raw number
+    side by side — that's what reconciles the plot with the facts table.
+    """
+    return {
+        "labels": list(axes.keys()),
+        "values": [round(v[0], 1) for v in axes.values()],
+        "raw_display": [v[1] for v in axes.values()],
+    }
+
+
 # --------------------------------------------------------------------------
 # PAPER radar
 # --------------------------------------------------------------------------
@@ -68,10 +86,15 @@ def paper_radar(work: dict) -> dict:
                             of the team / international reach)
       * Recency           - how current the work is
       * Open Access       - is it freely readable (reach / equity signal)
+      * Team Size         - number of contributing authors
+      * Topic Breadth     - how many distinct subjects the work touches
+      * Recent Momentum   - citations earned in the last two years (is it
+                            still being cited, or has interest cooled?)
     """
+    now = datetime.now().year
     cited = work.get("cited_by_count", 0) or 0
-    year = work.get("publication_year") or datetime.now().year
-    years_since = max(1, datetime.now().year - year + 1)
+    year = work.get("publication_year") or now
+    years_since = max(1, now - year + 1)
     fwci = work.get("fwci")
     refs = len(work.get("referenced_works") or [])
 
@@ -83,33 +106,52 @@ def paper_radar(work: dict) -> dict:
     }
 
     is_oa = bool((work.get("open_access") or {}).get("is_oa"))
+    n_authors = len(work.get("authorships") or [])
+    n_topics = len(work.get("concepts") or [])
+
+    # citations booked in the current and previous calendar year
+    recent_cites = sum(
+        (c.get("cited_by_count") or 0)
+        for c in (work.get("counts_by_year") or [])
+        if (c.get("year") or 0) >= now - 1
+    )
+
+    per_year = cited / years_since
 
     # Recency: this year -> 100, decays ~10 pts/year, floors at 0
-    recency = _clamp(100 - (datetime.now().year - year) * 10)
+    recency = _clamp(100 - (now - year) * 10)
 
+    # label -> (0-100 score = % of that metric's reference max, raw display)
     axes = {
-        "Citation Impact": _log_score(cited, ceiling=5000),
-        "Citation Velocity": _log_score(cited / years_since, ceiling=200),
-        "Field Impact (FWCI)": _ratio_score(fwci or 0, ceiling=3.0),
-        "Reference Depth": _log_score(refs, ceiling=120),
-        "Collaboration Reach": _ratio_score(len(countries), ceiling=8),
-        "Recency": recency,
-        "Open Access": 100.0 if is_oa else 20.0,
+        "Citation Impact": (_log_score(cited, ceiling=5000), f"{cited:,} citations"),
+        "Citation Velocity": (_log_score(per_year, ceiling=200), f"{per_year:.1f} cites/yr"),
+        "Field Impact (FWCI)": (
+            _ratio_score(fwci or 0, ceiling=3.0),
+            f"FWCI {fwci:.2f}" if fwci is not None else "FWCI —",
+        ),
+        "Reference Depth": (_log_score(refs, ceiling=120), f"{refs} references"),
+        "Collaboration Reach": (_ratio_score(len(countries), ceiling=8), f"{len(countries)} countries"),
+        "Recency": (recency, str(year)),
+        "Open Access": (100.0 if is_oa else 20.0, "Open" if is_oa else "Closed"),
+        "Team Size": (_log_score(n_authors, ceiling=30), f"{n_authors} authors"),
+        "Topic Breadth": (_ratio_score(n_topics, ceiling=12), f"{n_topics} topics"),
+        "Recent Momentum": (_log_score(recent_cites, ceiling=150), f"{recent_cites:,} cites (2y)"),
     }
 
-    return {
-        "labels": list(axes.keys()),
-        "values": [round(v, 1) for v in axes.values()],
-        "raw": {
-            "citations": cited,
-            "publication_year": year,
-            "citations_per_year": round(cited / years_since, 1),
-            "fwci": round(fwci, 2) if fwci is not None else None,
-            "reference_count": refs,
-            "author_countries": sorted(c for c in countries if c),
-            "open_access": is_oa,
-        },
+    payload = _unpack(axes)
+    payload["raw"] = {
+        "citations": cited,
+        "publication_year": year,
+        "citations_per_year": round(per_year, 1),
+        "fwci": round(fwci, 2) if fwci is not None else None,
+        "reference_count": refs,
+        "author_countries": sorted(c for c in countries if c),
+        "open_access": is_oa,
+        "author_count": n_authors,
+        "topic_count": n_topics,
+        "recent_citations_2yr": recent_cites,
     }
+    return payload
 
 
 # --------------------------------------------------------------------------
@@ -133,38 +175,91 @@ def journal_radar(source: dict, sample: dict, paper_concepts: set[str]) -> dict:
       * Educator/Inst Reach- distinct contributing institutions
       * Discipline Fit     - concept overlap between paper and journal
       * Open Access        - share of freely-readable articles
+      * i10 Index          - papers with >=10 citations (depth of impact)
+      * Productivity       - total works the journal has published
+      * Topic Diversity    - how many distinct subjects it spans
     """
     stats = source.get("summary_stats") or {}
     impact = stats.get("2yr_mean_citedness", 0) or 0
     h_index = stats.get("h_index", 0) or 0
+    i10 = stats.get("i10_index", 0) or 0
     total_cites = source.get("cited_by_count", 0) or 0
+    works_count = source.get("works_count", 0) or 0
+    n_topics = len(source.get("x_concepts") or [])
 
+    countries = sample.get("countries", 0)
+    institutions = sample.get("institutions", 0)
+    oa_ratio = sample.get("oa_ratio", 0)
     discipline_fit = _discipline_fit(source, paper_concepts)
 
+    # label -> (0-100 score = % of that metric's reference max, raw display)
     axes = {
-        "Impact Factor": _ratio_score(impact, ceiling=15.0),
-        "h-index": _log_score(h_index, ceiling=600),
-        "Citation Volume": _log_score(total_cites, ceiling=2_000_000),
-        "Geography Reach": _ratio_score(sample.get("countries", 0), ceiling=25),
-        "Educator Reach": _log_score(sample.get("institutions", 0), ceiling=200),
-        "Discipline Fit": discipline_fit,
-        "Open Access": round(sample.get("oa_ratio", 0) * 100, 1),
+        "Impact Factor": (_ratio_score(impact, ceiling=15.0), f"IF {impact:.2f}"),
+        "h-index": (_log_score(h_index, ceiling=600), f"h = {h_index}"),
+        "Citation Volume": (_log_score(total_cites, ceiling=2_000_000), f"{total_cites:,} citations"),
+        "Geography Reach": (_ratio_score(countries, ceiling=25), f"{countries} countries"),
+        "Educator Reach": (_log_score(institutions, ceiling=200), f"{institutions} institutions"),
+        "Discipline Fit": (discipline_fit, f"{discipline_fit:.0f}% topic overlap"),
+        "Open Access": (round(oa_ratio * 100, 1), f"{oa_ratio * 100:.0f}% open access"),
+        "i10 Index": (_log_score(i10, ceiling=5000), f"i10 = {i10:,}"),
+        "Productivity": (_log_score(works_count, ceiling=100_000), f"{works_count:,} works"),
+        "Topic Diversity": (_ratio_score(n_topics, ceiling=25), f"{n_topics} topics"),
     }
 
-    return {
-        "labels": list(axes.keys()),
-        "values": [round(v, 1) for v in axes.values()],
-        "raw": {
-            "impact_factor_2yr": round(impact, 2),
-            "h_index": h_index,
-            "total_citations": total_cites,
-            "works_count": source.get("works_count"),
-            "distinct_countries": sample.get("countries", 0),
-            "distinct_institutions": sample.get("institutions", 0),
-            "open_access_ratio": round(sample.get("oa_ratio", 0), 2),
-            "discipline_fit_pct": discipline_fit,
-        },
+    payload = _unpack(axes)
+    payload["raw"] = {
+        "impact_factor_2yr": round(impact, 2),
+        "h_index": h_index,
+        "i10_index": i10,
+        "total_citations": total_cites,
+        "works_count": works_count,
+        "distinct_countries": countries,
+        "distinct_institutions": institutions,
+        "distinct_topics": n_topics,
+        "open_access_ratio": round(oa_ratio, 2),
+        "discipline_fit_pct": discipline_fit,
     }
+    return payload
+
+
+# --------------------------------------------------------------------------
+# AUTHOR radar
+# --------------------------------------------------------------------------
+def author_radar(author: dict) -> dict:
+    """
+    Build the 5-axis radar payload for a single author.
+
+    The five axes are the most popular author-level bibliometric indicators
+    (per the research-impact literature / library guides) that OpenAlex's
+    author `summary_stats` lets us compute directly:
+
+      * h-index          - the best-known author metric (Hirsch)
+      * i10-index        - Google Scholar's metric: papers with >=10 cites
+      * Total Citations  - lifetime scholarly attention
+      * Publications     - raw productivity (works count)
+      * Recent Impact    - 2-year mean citedness, an "author impact factor"
+
+    (g-index is also popular but needs each paper's citation count, which the
+    author summary doesn't expose, so the author-impact-factor stands in.)
+
+    As elsewhere, each value is a percentage of that metric's reference max,
+    and `raw_display` carries the real number for the tooltip.
+    """
+    stats = author.get("summary_stats") or {}
+    h_index = stats.get("h_index", 0) or 0
+    i10 = stats.get("i10_index", 0) or 0
+    mean_2yr = stats.get("2yr_mean_citedness", 0) or 0
+    cites = author.get("cited_by_count", 0) or 0
+    works = author.get("works_count", 0) or 0
+
+    axes = {
+        "h-index": (_log_score(h_index, ceiling=250), f"h = {h_index:,}"),
+        "i10-index": (_log_score(i10, ceiling=1000), f"i10 = {i10:,}"),
+        "Total Citations": (_log_score(cites, ceiling=500_000), f"{cites:,} citations"),
+        "Publications": (_log_score(works, ceiling=1000), f"{works:,} works"),
+        "Recent Impact": (_ratio_score(mean_2yr, ceiling=10.0), f"{mean_2yr:.2f} cites/paper (2y)"),
+    }
+    return _unpack(axes)
 
 
 def _discipline_fit(source: dict, paper_concepts: set[str]) -> float:
