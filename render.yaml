@@ -1,0 +1,13 @@
+# render.yaml — tells Render.com how to run this app.
+# With this file in the repo, Render can set everything up automatically
+# ("Blueprint" deploy) instead of you filling in fields by hand.
+services:
+  - type: web                       # a public website
+    name: research-radar
+    runtime: python
+    plan: free                      # free tier
+    rootDir: backend                # the Python app lives in /backend
+    buildCommand: pip install -r requirements.txt
+    # gunicorn is a production-grade server (the built-in Flask one is only
+    # for local dev). $PORT is supplied by Render automatically.
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT

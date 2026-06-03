@@ -1,0 +1,8 @@
+# Python virtual environment — never commit this; the host rebuilds it
+.venv/
+__pycache__/
+*.pyc
+
+# OS / editor noise
+.DS_Store
+.vscode/

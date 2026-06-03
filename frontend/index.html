@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Research Radar</title>
+  <link rel="stylesheet" href="style.css" />
+  <!-- Chart.js renders the radar/spider plots -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <header>
+    <h1>📡 Research Radar</h1>
+    <p class="tag">
+      Search a paper by <strong>title</strong>, <strong>DOI</strong>,
+      <strong>topic</strong>, or <strong>author</strong> — see the paper and
+      its journal profiled side by side.
+    </p>
+  </header>
+
+  <div class="tabs">
+    <button class="tab active" data-mode="single">Single paper</button>
+    <button class="tab" data-mode="compare">Compare two</button>
+  </div>
+
+  <!-- SINGLE mode -->
+  <section class="search" id="singleSearch">
+    <input
+      id="query"
+      type="text"
+      placeholder="e.g. Attention is all you need  ·  10.1038/nature14539  ·  CRISPR gene editing"
+      autocomplete="off"
+    />
+    <button id="searchBtn">Analyze</button>
+  </section>
+
+  <!-- COMPARE mode -->
+  <section class="search compare hidden" id="compareSearch">
+    <input id="queryA" type="text" placeholder="Paper A — title / DOI / topic" autocomplete="off" />
+    <span class="vs">vs</span>
+    <input id="queryB" type="text" placeholder="Paper B — title / DOI / topic" autocomplete="off" />
+    <button id="compareBtn">Compare</button>
+  </section>
+
+  <div id="status" class="status"></div>
+
+  <!-- candidate picker (shown when a text query has several matches) -->
+  <ul id="candidates" class="candidates hidden"></ul>
+
+  <main id="results" class="results hidden">
+    <!-- PAPER -->
+    <div class="panel">
+      <div class="panel-head">
+        <span class="badge paper">Paper</span>
+        <h2 id="paperTitle"></h2>
+        <p id="paperMeta" class="meta"></p>
+      </div>
+      <canvas id="paperChart"></canvas>
+      <table id="paperTable" class="facts"></table>
+    </div>
+
+    <!-- JOURNAL -->
+    <div class="panel">
+      <div class="panel-head">
+        <span class="badge journal">Journal</span>
+        <h2 id="journalTitle"></h2>
+        <p id="journalMeta" class="meta"></p>
+      </div>
+      <canvas id="journalChart"></canvas>
+      <table id="journalTable" class="facts"></table>
+    </div>
+  </main>
+
+  <!-- COMPARE results: two overlaid radars -->
+  <main id="compareResults" class="results hidden">
+    <div class="panel">
+      <div class="panel-head">
+        <span class="badge paper">Papers</span>
+        <h2>Paper A vs Paper B</h2>
+        <p id="cmpPaperLegend" class="meta"></p>
+      </div>
+      <canvas id="cmpPaperChart"></canvas>
+      <table id="cmpPaperTable" class="facts compare-table"></table>
+    </div>
+    <div class="panel">
+      <div class="panel-head">
+        <span class="badge journal">Journals</span>
+        <h2>Journal A vs Journal B</h2>
+        <p id="cmpJournalLegend" class="meta"></p>
+      </div>
+      <canvas id="cmpJournalChart"></canvas>
+      <table id="cmpJournalTable" class="facts compare-table"></table>
+    </div>
+  </main>
+
+  <footer>
+    Data: <a href="https://openalex.org" target="_blank" rel="noopener">OpenAlex</a>.
+    Impact Factor shown is OpenAlex 2-year mean citedness (a JIF analogue),
+    not the proprietary Clarivate JIF.
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
