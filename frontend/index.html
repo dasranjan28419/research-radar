@@ -18,6 +18,38 @@
     </p>
   </header>
 
+  <div class="layout">
+
+  <!-- LEFT TAB: choose which features show in each radar -->
+  <aside class="sidebar" id="featurePanel">
+    <h3 class="sidebar-title">Radar Features</h3>
+    <p class="sidebar-sub">Choose which axes appear on each plot.</p>
+
+    <div class="feature-group">
+      <div class="feature-group-head"><span class="badge paper">Paper</span></div>
+      <label class="feature-toggle"><input type="checkbox" data-kind="paper" value="Citation Impact" checked /> Citation Impact</label>
+      <label class="feature-toggle"><input type="checkbox" data-kind="paper" value="Citation Velocity" checked /> Citation Velocity</label>
+      <label class="feature-toggle"><input type="checkbox" data-kind="paper" value="Field Impact (FWCI)" checked /> Field Impact (FWCI)</label>
+      <label class="feature-toggle"><input type="checkbox" data-kind="paper" value="Reference Depth" checked /> Reference Depth</label>
+      <label class="feature-toggle"><input type="checkbox" data-kind="paper" value="Collaboration Reach" checked /> Collaboration Reach</label>
+      <label class="feature-toggle"><input type="checkbox" data-kind="paper" value="Recency" checked /> Recency</label>
+      <label class="feature-toggle"><input type="checkbox" data-kind="paper" value="Open Access" checked /> Open Access</label>
+    </div>
+
+    <div class="feature-group">
+      <div class="feature-group-head"><span class="badge journal">Journal</span></div>
+      <label class="feature-toggle"><input type="checkbox" data-kind="journal" value="Impact Factor" checked /> Impact Factor</label>
+      <label class="feature-toggle"><input type="checkbox" data-kind="journal" value="h-index" checked /> h-index</label>
+      <label class="feature-toggle"><input type="checkbox" data-kind="journal" value="Citation Volume" checked /> Citation Volume</label>
+      <label class="feature-toggle"><input type="checkbox" data-kind="journal" value="Geography Reach" checked /> Geography Reach</label>
+      <label class="feature-toggle"><input type="checkbox" data-kind="journal" value="Educator Reach" checked /> Educator Reach</label>
+      <label class="feature-toggle"><input type="checkbox" data-kind="journal" value="Discipline Fit" checked /> Discipline Fit</label>
+      <label class="feature-toggle"><input type="checkbox" data-kind="journal" value="Open Access" checked /> Open Access</label>
+    </div>
+  </aside>
+
+  <div class="main-col">
+
   <div class="tabs">
     <button class="tab active" data-mode="single">Single paper</button>
     <button class="tab" data-mode="compare">Compare two</button>
@@ -92,6 +124,9 @@
       <table id="cmpJournalTable" class="facts compare-table"></table>
     </div>
   </main>
+
+  </div><!-- /main-col -->
+  </div><!-- /layout -->
 
   <footer>
     Data: <a href="https://openalex.org" target="_blank" rel="noopener">OpenAlex</a>.

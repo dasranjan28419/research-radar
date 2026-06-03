@@ -51,6 +51,55 @@ button {
 }
 button:disabled { opacity: 0.5; cursor: wait; }
 
+/* left feature tab + main column layout */
+.layout {
+  display: flex;
+  align-items: flex-start;
+  gap: 1.2rem;
+  max-width: 1460px;
+  margin: 0 auto;
+  padding: 0 1rem;
+}
+.main-col { flex: 1; min-width: 0; }
+
+.sidebar {
+  flex: 0 0 240px;
+  position: sticky;
+  top: 1rem;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 1.1rem 1.1rem 1.3rem;
+  margin-top: 1.2rem;
+}
+.sidebar-title { margin: 0 0 0.2rem; font-size: 1.05rem; }
+.sidebar-sub { margin: 0 0 1rem; color: var(--muted); font-size: 0.8rem; line-height: 1.4; }
+
+.feature-group { margin-bottom: 1.1rem; }
+.feature-group:last-child { margin-bottom: 0; }
+.feature-group-head { margin-bottom: 0.55rem; }
+
+.feature-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.32rem 0;
+  font-size: 0.86rem;
+  color: var(--ink);
+  cursor: pointer;
+}
+.feature-toggle input {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--paper);
+  cursor: pointer;
+}
+
+@media (max-width: 880px) {
+  .layout { flex-direction: column; }
+  .sidebar { flex-basis: auto; width: 100%; position: static; }
+}
+
 .tabs {
   display: flex;
   gap: 0.4rem;

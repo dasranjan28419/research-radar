@@ -11,6 +11,54 @@ let cmpJournalChart = null;
 const COLOR_A = "#4f9dff"; // paper / side A
 const COLOR_B = "#ff7a59"; // journal / side B
 
+// Which radar axes the user wants shown, per window. Seeded with every axis
+// the backend produces (see metrics.py); the left "Radar Features" tab toggles
+// these and the plots redraw to match.
+const enabledFeatures = {
+  paper: new Set([
+    "Citation Impact", "Citation Velocity", "Field Impact (FWCI)",
+    "Reference Depth", "Collaboration Reach", "Recency", "Open Access",
+  ]),
+  journal: new Set([
+    "Impact Factor", "h-index", "Citation Volume", "Geography Reach",
+    "Educator Reach", "Discipline Fit", "Open Access",
+  ]),
+};
+
+// last rendered payloads, so a feature toggle can redraw without re-fetching
+let lastSingle = null;
+let lastCompare = null;
+
+// ---- feature tab (which axes show on each radar) ----
+document.querySelectorAll(".feature-toggle input").forEach((cb) => {
+  cb.addEventListener("change", () => {
+    const set = enabledFeatures[cb.dataset.kind];
+    if (cb.checked) set.add(cb.value);
+    else set.delete(cb.value);
+    redraw();
+  });
+});
+
+// keep only the enabled axes of a radar payload, preserving label/value order
+function filterRadar(radar, kind) {
+  const enabled = enabledFeatures[kind];
+  const labels = [];
+  const values = [];
+  radar.labels.forEach((lab, i) => {
+    if (enabled.has(lab)) {
+      labels.push(lab);
+      values.push(radar.values[i]);
+    }
+  });
+  return { ...radar, labels, values };
+}
+
+// redraw whichever results view is currently visible, using the stored payload
+function redraw() {
+  if (lastSingle && !$("results").classList.contains("hidden")) render(lastSingle);
+  if (lastCompare && !$("compareResults").classList.contains("hidden")) renderCompare(lastCompare);
+}
+
 const queryInput = $("query");
 const searchBtn = $("searchBtn");
 
@@ -66,6 +114,7 @@ async function runCompare() {
 }
 
 function renderCompare(data) {
+  lastCompare = data;
   const A = data.a, B = data.b;
 
   // legends
@@ -76,10 +125,10 @@ function renderCompare(data) {
     `<span class="dot a"></span>${escapeHtml(jName(A.journal))}` +
     `<br><span class="dot b"></span>${escapeHtml(jName(B.journal))}`;
 
-  // overlaid paper radar (shared axes)
+  // overlaid paper radar (shared axes) — filtered to the chosen features
   cmpPaperChart = drawOverlay(
     "cmpPaperChart", cmpPaperChart,
-    A.paper.radar, B.paper.radar, "A", "B"
+    filterRadar(A.paper.radar, "paper"), filterRadar(B.paper.radar, "paper"), "A", "B"
   );
   buildCompareTable("cmpPaperTable", A.paper.radar, B.paper.radar);
 
@@ -87,7 +136,7 @@ function renderCompare(data) {
   if (A.journal.radar && B.journal.radar) {
     cmpJournalChart = drawOverlay(
       "cmpJournalChart", cmpJournalChart,
-      A.journal.radar, B.journal.radar, "A", "B"
+      filterRadar(A.journal.radar, "journal"), filterRadar(B.journal.radar, "journal"), "A", "B"
     );
     buildCompareTable("cmpJournalTable", A.journal.radar, B.journal.radar);
   } else {
@@ -234,6 +283,7 @@ async function analyze(params) {
 }
 
 function render(data) {
+  lastSingle = data;
   const { paper, journal } = data;
 
   // ---- paper panel ----
@@ -242,7 +292,7 @@ function render(data) {
   $("paperMeta").innerHTML =
     `${paper.year || "—"}${pAuthors ? " · " + escapeHtml(pAuthors) : ""}` +
     (paper.doi ? ` · <a href="${paper.doi}" target="_blank" rel="noopener">DOI</a>` : "");
-  paperChart = drawRadar("paperChart", paperChart, paper.radar, "#4f9dff");
+  paperChart = drawRadar("paperChart", paperChart, filterRadar(paper.radar, "paper"), "#4f9dff");
   fillTable("paperTable", paper.radar.raw);
 
   // ---- journal panel ----
@@ -255,7 +305,7 @@ function render(data) {
       m.issn && "ISSN " + m.issn,
       m.is_oa ? "Open Access" : null,
     ].filter(Boolean).join(" · ");
-    journalChart = drawRadar("journalChart", journalChart, journal.radar, "#ff7a59");
+    journalChart = drawRadar("journalChart", journalChart, filterRadar(journal.radar, "journal"), "#ff7a59");
     fillTable("journalTable", journal.radar.raw);
   } else {
     $("journalTitle").textContent = "Journal data unavailable";
