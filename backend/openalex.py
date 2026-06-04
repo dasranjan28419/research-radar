@@ -73,8 +73,32 @@ def find_work(query: str) -> dict | None:
     return results[0] if results else None
 
 
-def search_works(query: str, limit: int = 8) -> list[dict]:
-    """Return a short list of candidate papers for the picker UI."""
+def work_category(rec: dict) -> str:
+    """Bucket a work by publication type: review / conference / journal / other.
+
+    Uses the work's own `type` plus its host source's `type`; a review wins
+    over the journal it appears in. Shared by the citation network and the
+    search-result filters so both agree on a paper's category.
+    """
+    wtype = (rec.get("type") or "").lower()
+    source = (rec.get("primary_location") or {}).get("source") or {}
+    stype = (source.get("type") or "").lower()
+
+    if wtype == "review":
+        return "review"
+    if stype == "conference" or wtype in ("proceedings-article", "proceedings"):
+        return "conference"
+    if stype == "journal" and wtype in ("article", "letter", "editorial", "review-article"):
+        return "journal"
+    return "other"
+
+
+def search_works(query: str, limit: int = 25) -> list[dict]:
+    """Return candidate papers for the picker UI.
+
+    Fetches the most relevant matches (the frontend then sorts/filters them by
+    date, citations, or category), tagging each with its publication category.
+    """
     data = _get(
         "/works",
         {"search": query, "per_page": limit, "sort": "relevance_score:desc"},
@@ -89,6 +113,7 @@ def search_works(query: str, limit: int = 8) -> list[dict]:
                 "year": w.get("publication_year"),
                 "citations": w.get("cited_by_count"),
                 "journal": src.get("display_name"),
+                "category": work_category(w),
                 "authors": [
                     a.get("author", {}).get("display_name")
                     for a in (w.get("authorships") or [])[:4]
@@ -126,6 +151,59 @@ def get_source(source_id: str) -> dict | None:
         return _get(f"/sources/{sid}")
     except requests.HTTPError:
         return None
+
+
+_NET_SELECT = (
+    "id,display_name,publication_year,cited_by_count,doi,"
+    "type,primary_location,authorships,referenced_works"
+)
+
+
+def get_citing_works(work_id: str, n: int = 15) -> list[dict]:
+    """Papers that cite the given work, most-cited first.
+
+    These become the 'citing' arm of the citation network. We pull the same
+    lightweight fields used to render a graph node, plus referenced_works so
+    the frontend can find shared-reference links between neighbours.
+    """
+    if not work_id:
+        return []
+    wid = work_id.split("/")[-1]
+    try:
+        data = _get(
+            "/works",
+            {
+                "filter": f"cites:{wid}",
+                "per_page": n,
+                "sort": "cited_by_count:desc",
+                "select": _NET_SELECT,
+            },
+        )
+    except requests.HTTPError:
+        return []
+    return data.get("results") or []
+
+
+def get_works_by_ids(ids: list[str], select: str | None = _NET_SELECT) -> list[dict]:
+    """Batch-fetch many works in a single call via the OR (`|`) id filter.
+
+    OpenAlex caps an OR filter at 50 values, so callers should pre-trim.
+    """
+    ids = [i.split("/")[-1] for i in ids if i]
+    if not ids:
+        return []
+    ids = ids[:50]
+    params = {
+        "filter": "ids.openalex:" + "|".join(ids),
+        "per_page": len(ids),
+    }
+    if select:
+        params["select"] = select
+    try:
+        data = _get("/works", params)
+    except requests.HTTPError:
+        return []
+    return data.get("results") or []
 
 
 def sample_journal(source_id: str, n: int = 50) -> dict:

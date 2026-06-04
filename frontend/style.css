@@ -142,12 +142,51 @@ button:disabled { opacity: 0.5; cursor: wait; }
 .status { text-align: center; color: var(--muted); min-height: 1.4rem; margin-top: 0.6rem; }
 .status.error { color: #ff8a8a; }
 
+/* filter / sort chips above the candidate list */
+.candidate-controls {
+  max-width: 760px;
+  margin: 0.6rem auto 0;
+  padding: 0 1rem;
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+.cand-chip {
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  padding: 0.34rem 0.85rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.cand-chip:hover:not(:disabled) { border-color: var(--paper); color: var(--ink); }
+.cand-chip.active { background: var(--panel); color: var(--ink); border-color: var(--paper); }
+.cand-chip:disabled { opacity: 0.4; cursor: default; }
+
 .candidates {
   max-width: 760px;
   margin: 0.5rem auto;
   padding: 0 1rem;
   list-style: none;
 }
+.c-empty {
+  color: var(--muted);
+  text-align: center;
+  padding: 0.8rem;
+  font-size: 0.88rem;
+}
+.c-cat {
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 0.7rem;
+  letter-spacing: 0.4px;
+}
+.c-cat.review { color: #a78bfa; }
+.c-cat.conference { color: #fbbf24; }
+.c-cat.journal { color: #34d399; }
+.c-cat.other { color: #9aa3c7; }
 .candidates li {
   background: var(--panel);
   border: 1px solid var(--line);
@@ -292,3 +331,103 @@ footer a { color: var(--paper); }
   color: var(--muted);
   justify-content: center;
 }
+
+/* ---- Citation network (full-width tab) ---- */
+.network-view {
+  max-width: 1180px;
+  margin: 1.2rem auto;
+  padding: 1.4rem;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+}
+.network-view .search { margin-top: 0.6rem; }
+.network-view .search input {
+  flex: 1;
+  padding: 0.85rem 1rem;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: #11152e;
+  color: var(--ink);
+  font-size: 1rem;
+}
+.network-view .search input:focus { outline: none; border-color: var(--paper); }
+
+.network-canvas-wrap {
+  position: relative;
+  width: 100%;
+  height: 620px;
+  margin-top: 0.8rem;
+  background: radial-gradient(900px 500px at 50% 50%, #141934, #0d1126);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  overflow: hidden;
+}
+#networkSvg { width: 100%; height: 100%; display: block; cursor: grab; }
+#networkSvg:active { cursor: grabbing; }
+
+.net-label {
+  fill: #aeb6e0;
+  font-size: 9px;
+  font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+  pointer-events: none;
+  paint-order: stroke;
+  stroke: #0d1126;
+  stroke-width: 2.5px;
+}
+.net-node-seed .net-label { fill: #e9ecff; font-weight: 700; }
+.net-center .net-label { fill: #ffffff; font-size: 11px; font-weight: 700; }
+.net-center circle { filter: drop-shadow(0 0 6px rgba(207, 224, 255, 0.55)); }
+
+/* web threads — colour/weight set inline per focus (see setFocus) */
+.net-thread { stroke-linecap: round; transition: stroke-opacity 0.15s; }
+.net-node { transition: opacity 0.2s; }
+
+/* pie wedges (one per category) + headings — colour set inline per category */
+.net-wedge { stroke-width: 1; }
+.net-quad-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.network-tip {
+  position: absolute;
+  z-index: 5;
+  max-width: 280px;
+  padding: 0.55rem 0.7rem;
+  background: rgba(13, 17, 38, 0.96);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--ink);
+  pointer-events: none;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+}
+.network-tip .net-rel {
+  display: inline-block;
+  margin-top: 4px;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--muted);
+}
+
+.network-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 1rem;
+  font-size: 0.76rem;
+  color: var(--muted);
+  align-items: center;
+}
+.network-legend span { display: flex; align-items: center; gap: 6px; }
+.net-dot { width: 11px; height: 11px; border-radius: 50%; display: inline-block; }
+.net-dot.seed { background: #7b6bff; box-shadow: 0 0 0 2px rgba(123,107,255,0.35); }
+.net-dot.reference { background: #4f9dff; }
+.net-dot.citing { background: #ff7a59; }
+.net-dot.related { background: #1d9e75; }
+.net-legend-note { margin-left: auto; font-style: italic; }

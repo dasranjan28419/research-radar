@@ -169,6 +169,117 @@ def api_analyze():
     return jsonify(_build_payload(work))
 
 
+# --------------------------------------------------------------------------
+# citation network
+# --------------------------------------------------------------------------
+# Caps that keep the graph fast (≈3 API calls) and legible on screen.
+_NET_REF_CAP = 18      # references (works the seed cites) to include
+_NET_REL_CAP = 10      # OpenAlex "related_works" to include
+_NET_CITE_CAP = 15     # most-cited papers that cite the seed
+_NET_TOTAL_CAP = 40    # hard cap on neighbour nodes
+_NET_COUPLING_MIN = 3  # shared references needed for a neighbour↔neighbour link
+
+
+def _net_node(rec: dict, relation: str) -> dict:
+    """Shape one OpenAlex work into a graph node the frontend can draw."""
+    authorships = rec.get("authorships") or []
+    first = None
+    if authorships:
+        first = (authorships[0].get("author") or {}).get("display_name")
+    return {
+        "id": rec.get("id", "").split("/")[-1],
+        "title": rec.get("display_name") or "Untitled",
+        "year": rec.get("publication_year"),
+        "citations": rec.get("cited_by_count") or 0,
+        "author": first,
+        "doi": rec.get("doi"),
+        "relation": relation,
+        "category": openalex.work_category(rec),
+        "seed": relation == "seed",
+    }
+
+
+def _build_network(work: dict) -> dict:
+    """Build a citation web around `work`.
+
+    Nodes: the seed paper plus its references, related works, and the papers
+    that cite it. Links: the seed → each neighbour (the highlighted spokes),
+    and neighbour ↔ neighbour where they cite one another or share enough
+    references (bibliographic coupling) to read as a cluster.
+    """
+    seed_id = work.get("id", "").split("/")[-1]
+    referenced = [r.split("/")[-1] for r in (work.get("referenced_works") or [])]
+    related = [r.split("/")[-1] for r in (work.get("related_works") or [])]
+    citing = openalex.get_citing_works(seed_id, n=_NET_CITE_CAP)
+
+    # Decide a neighbour's relation once; first source to claim an id wins.
+    relation: dict[str, str] = {}
+    fetch_ids: list[str] = []
+    for rid in referenced[:_NET_REF_CAP]:
+        if rid and rid not in relation:
+            relation[rid] = "reference"
+            fetch_ids.append(rid)
+    for rid in related[:_NET_REL_CAP]:
+        if rid and rid not in relation:
+            relation[rid] = "related"
+            fetch_ids.append(rid)
+
+    # References + related need a metadata round-trip; citing arrives complete.
+    records: dict[str, dict] = {}
+    for rec in openalex.get_works_by_ids(fetch_ids):
+        records[rec.get("id", "").split("/")[-1]] = rec
+    for rec in citing:
+        cid = rec.get("id", "").split("/")[-1]
+        relation.setdefault(cid, "citing")
+        records.setdefault(cid, rec)
+
+    # Keep only neighbours we actually have records for, the seed aside, capped.
+    neighbour_ids = [
+        nid for nid in relation if nid != seed_id and nid in records
+    ][:_NET_TOTAL_CAP]
+
+    nodes = [_net_node(work, "seed")]
+    nodes.extend(_net_node(records[nid], relation[nid]) for nid in neighbour_ids)
+
+    # Highlighted spokes: seed → every neighbour.
+    links = [{"source": seed_id, "target": nid, "primary": True} for nid in neighbour_ids]
+
+    # Web strands: neighbour ↔ neighbour via direct citation or shared refs.
+    full_id = {nid: records[nid].get("id") for nid in neighbour_ids}
+    refsets = {nid: set(records[nid].get("referenced_works") or []) for nid in neighbour_ids}
+    for i, a in enumerate(neighbour_ids):
+        for b in neighbour_ids[i + 1:]:
+            if full_id[b] in refsets[a] or full_id[a] in refsets[b]:
+                links.append({"source": a, "target": b, "primary": False})
+            elif len(refsets[a] & refsets[b]) >= _NET_COUPLING_MIN:
+                links.append({"source": a, "target": b, "primary": False})
+
+    return {
+        "seed": seed_id,
+        "title": work.get("display_name"),
+        "nodes": nodes,
+        "links": links,
+    }
+
+
+@app.route("/api/network")
+def api_network():
+    work_id = request.args.get("id", "").strip()
+    q = request.args.get("q", "").strip()
+    if not work_id and not q:
+        return jsonify({"error": "Provide ?q=<search text> or ?id=<work id>"}), 400
+    try:
+        work = openalex.get_work(work_id) if work_id else openalex.find_work(q)
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"error": f"Lookup failed: {exc}"}), 502
+    if not work:
+        return jsonify({"error": "No matching paper found."}), 404
+    try:
+        return jsonify(_build_network(work))
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"error": f"Network build failed: {exc}"}), 502
+
+
 @app.route("/api/compare")
 def api_compare():
     """Resolve two queries and return both payloads for side-by-side overlay.

@@ -7,6 +7,8 @@
   <link rel="stylesheet" href="style.css" />
   <!-- Chart.js renders the radar/spider plots -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <!-- D3 powers the force-directed citation network -->
+  <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
 </head>
 <body>
   <header>
@@ -60,6 +62,7 @@
     <button class="tab active" data-mode="single">Single paper</button>
     <button class="tab" data-mode="compare">Compare two</button>
     <button class="tab" data-mode="journalReach">Journal reach</button>
+    <button class="tab" data-mode="network">Citation network</button>
   </div>
 
   <!-- SINGLE mode -->
@@ -84,6 +87,7 @@
   <div id="status" class="status"></div>
 
   <!-- candidate picker (shown when a text query has several matches) -->
+  <div id="candidateControls" class="candidate-controls hidden"></div>
   <ul id="candidates" class="candidates hidden"></ul>
 
   <main id="results" class="results hidden">
@@ -156,6 +160,42 @@
       <span>Educator reach</span>
       <span>Geographic reach</span>
       <span>Academic citations</span>
+    </div>
+  </section>
+
+  <!-- CITATION NETWORK: full-width force-directed web around a paper -->
+  <section id="networkView" class="network-view hidden">
+    <h2 class="jr-title">Citation network</h2>
+    <p class="jr-sub">Search a paper to weave its citation web — references it
+      builds on, papers that cite it, and related work. The searched paper sits
+      at the centre, and the disc is sliced into pie wedges by publication type
+      (review · conference · journal peer-reviewed · other) — each wedge's angle
+      and label show that category's share of the connected papers. Colour shows
+      how a paper relates to the searched one, and the more cited it is, the
+      bigger its circle. Hover any paper to light up its links; drag to
+      rearrange, click to open.</p>
+
+    <section class="search" id="networkSearch">
+      <input id="networkQuery" type="text"
+        placeholder="Paper title / DOI / topic — build its citation web"
+        autocomplete="off" />
+      <button id="networkBtn">Build network</button>
+    </section>
+
+    <div id="networkStatus" class="status"></div>
+
+    <div class="network-canvas-wrap">
+      <svg id="networkSvg" role="img"
+        aria-label="Force-directed graph of papers connected to the searched paper"></svg>
+      <div id="networkTip" class="network-tip hidden"></div>
+    </div>
+
+    <div class="network-legend">
+      <span><i class="net-dot seed"></i> Searched paper</span>
+      <span><i class="net-dot reference"></i> References (cited by it)</span>
+      <span><i class="net-dot citing"></i> Citing papers</span>
+      <span><i class="net-dot related"></i> Related work</span>
+      <span class="net-legend-note">Bigger circle = more cited</span>
     </div>
   </section>
 

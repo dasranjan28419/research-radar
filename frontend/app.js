@@ -78,20 +78,23 @@ document.querySelectorAll(".tab").forEach((tab) => {
     document.querySelectorAll(".tab").forEach((t) => t.classList.remove("active"));
     tab.classList.add("active");
     const mode = tab.dataset.mode;
-    const journalReach = mode === "journalReach";
+    const single = mode === "single";
     const compare = mode === "compare";
+    const journalReach = mode === "journalReach";
+    const network = mode === "network";
 
     // search rows + result views are only used by the paper-centric modes
-    $("singleSearch").classList.toggle("hidden", compare || journalReach);
+    $("singleSearch").classList.toggle("hidden", !single);
     $("compareSearch").classList.toggle("hidden", !compare);
     $("results").classList.add("hidden");
     $("compareResults").classList.add("hidden");
     $("authorPanel").classList.add("hidden");
-    $("candidates").classList.add("hidden");
+    hideCandidates();
 
-    // the journal-reach view spans the whole width — hide the feature sidebar
-    $("featurePanel").classList.toggle("hidden", journalReach);
+    // journal-reach and network views span the whole width — hide the sidebar
+    $("featurePanel").classList.toggle("hidden", journalReach || network);
     $("journalReachView").classList.toggle("hidden", !journalReach);
+    $("networkView").classList.toggle("hidden", !network);
     if (journalReach) initJournalReach();
 
     setStatus("");
@@ -243,7 +246,7 @@ function setStatus(msg, isError = false) {
 async function run() {
   const q = queryInput.value.trim();
   if (!q) return;
-  $("candidates").classList.add("hidden");
+  hideCandidates();
   $("results").classList.add("hidden");
   $("authorPanel").classList.add("hidden");
   setStatus("Searching the scholarly graph…");
@@ -278,31 +281,84 @@ function looksLikeId(q) {
   return s.startsWith("10.") || s.includes("doi.org/") || /^w\d+$/.test(s);
 }
 
+// candidate picker state: the fetched matches and the chosen view (default
+// "latest" — newest first; other views filter by category or sort by citations)
+let candidateResults = [];
+let candidateView = "latest";
+const CAT_NAMES = { review: "Review", conference: "Conference", journal: "Journal", other: "Other" };
+
+function hideCandidates() {
+  $("candidates").classList.add("hidden");
+  $("candidateControls").classList.add("hidden");
+}
+
 function showCandidates(results) {
+  candidateResults = results;
+  candidateView = "latest";
+  renderCandidateControls();
+  renderCandidateList();
+  $("candidateControls").classList.remove("hidden");
+  $("candidates").classList.remove("hidden");
+}
+
+function renderCandidateControls() {
+  const bar = $("candidateControls");
+  const nRev = candidateResults.filter((r) => r.category === "review").length;
+  const nConf = candidateResults.filter((r) => r.category === "conference").length;
+  const views = [
+    { key: "latest", label: "Latest first", enabled: true },
+    { key: "cited", label: "Most cited", enabled: true },
+    { key: "reviews", label: `Reviews (${nRev})`, enabled: nRev > 0 },
+    { key: "conference", label: `Conference (${nConf})`, enabled: nConf > 0 },
+  ];
+  bar.innerHTML = "";
+  views.forEach((v) => {
+    const btn = document.createElement("button");
+    btn.className = "cand-chip" + (candidateView === v.key ? " active" : "");
+    btn.textContent = v.label;
+    btn.disabled = !v.enabled;
+    btn.onclick = () => { candidateView = v.key; renderCandidateControls(); renderCandidateList(); };
+    bar.appendChild(btn);
+  });
+}
+
+function renderCandidateList() {
   const ul = $("candidates");
   ul.innerHTML = "";
-  results.forEach((r) => {
+  let list = candidateResults.slice();
+  if (candidateView === "reviews") list = list.filter((r) => r.category === "review");
+  else if (candidateView === "conference") list = list.filter((r) => r.category === "conference");
+  if (candidateView === "cited") list.sort((a, b) => (b.citations || 0) - (a.citations || 0));
+  else list.sort((a, b) => (b.year || 0) - (a.year || 0)); // latest first
+
+  if (!list.length) {
+    const li = document.createElement("li");
+    li.className = "c-empty";
+    li.textContent = "No papers in this category among the matches.";
+    ul.appendChild(li);
+    return;
+  }
+
+  list.forEach((r) => {
     const li = document.createElement("li");
     const authors = (r.authors || []).filter(Boolean).join(", ");
+    const cat = CAT_NAMES[r.category] || "Other";
     li.innerHTML = `
       <div class="c-title">${escapeHtml(r.title || "Untitled")}</div>
       <div class="c-sub">
         ${r.year || "—"} · ${r.citations ?? 0} citations
+        · <span class="c-cat ${r.category}">${cat}</span>
         ${r.journal ? "· " + escapeHtml(r.journal) : ""}
         ${authors ? "<br>" + escapeHtml(authors) : ""}
       </div>`;
-    li.addEventListener("click", () => {
-      ul.classList.add("hidden");
-      analyze({ id: r.id });
-    });
+    li.addEventListener("click", () => { hideCandidates(); analyze({ id: r.id }); });
     ul.appendChild(li);
   });
-  ul.classList.remove("hidden");
 }
 
 async function analyze(params) {
   setStatus("Building radar profiles…");
-  $("candidates").classList.add("hidden");
+  hideCandidates();
   const qs = new URLSearchParams(params).toString();
   const res = await fetch(`/api/analyze?${qs}`);
   const data = await res.json();
@@ -696,4 +752,277 @@ function jrUpdateChart() {
       },
     },
   });
+}
+
+/* =====================================================================
+ * Citation network (fourth tab)
+ * Fetches /api/network for a searched paper and draws a force-directed
+ * "spider web": the seed paper sits at the centre, spokes out to its
+ * references / citing papers / related work (highlighted), with fainter
+ * strands between neighbours that cite or share references.
+ * ===================================================================== */
+const NET_COLORS = {
+  seed: "#7b6bff",
+  reference: "#4f9dff",
+  citing: "#ff7a59",
+  related: "#1d9e75",
+};
+let networkSim = null;
+
+const networkBtn = $("networkBtn");
+const networkQuery = $("networkQuery");
+networkBtn.addEventListener("click", runNetwork);
+networkQuery.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") runNetwork();
+});
+
+function setNetStatus(msg, isError = false) {
+  const el = $("networkStatus");
+  el.textContent = msg;
+  el.classList.toggle("error", isError);
+}
+
+async function runNetwork() {
+  const q = networkQuery.value.trim();
+  if (!q) return;
+  setNetStatus("Weaving the citation web…");
+  networkBtn.disabled = true;
+  try {
+    const res = await fetch(`/api/network?q=${encodeURIComponent(q)}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Network build failed");
+    renderNetwork(data);
+    const n = data.nodes.length - 1;
+    setNetStatus(n
+      ? `${escapeHtml(data.title || "Paper")} — ${n} connected papers, ${data.links.length} links`
+      : "No connected papers found for that work.");
+  } catch (err) {
+    setNetStatus(err.message, true);
+  } finally {
+    networkBtn.disabled = false;
+  }
+}
+
+// adjacency map (string id -> Set of string ids) for hover highlighting
+function netAdjacency(links) {
+  const adj = {};
+  links.forEach((l) => {
+    const s = l.source.id || l.source;
+    const t = l.target.id || l.target;
+    (adj[s] = adj[s] || new Set()).add(t);
+    (adj[t] = adj[t] || new Set()).add(s);
+  });
+  return adj;
+}
+
+function netLabel(d) {
+  const surname = d.author ? d.author.split(" ").slice(-1)[0] : "";
+  const base = [surname, d.year].filter(Boolean).join(" ");
+  return d.seed ? "★ " + (base || "This paper") : base;
+}
+
+function netTip(d) {
+  return `<strong>${escapeHtml(d.title)}</strong><br>` +
+    `${escapeHtml(d.author || "—")} · ${d.year || "—"} · ${d.citations} citations` +
+    `<br><span class="net-rel">${d.relation === "seed" ? "searched paper" : d.relation}</span>`;
+}
+
+// Citation web as a pie. The searched paper sits pinned at the centre; the
+// surrounding disc is sliced into wedges by publication type, and each wedge's
+// angle is proportional to that category's share of the connected papers (the
+// share is shown in the wedge label). Every paper is held inside its category's
+// wedge. Circle size ∝ citations, colour ∝ relation to the searched paper, and
+// hovering any paper lights up its connections in place.
+const NET_CAT_ORDER = ["review", "conference", "journal", "other"];
+const NET_CAT_LABEL = {
+  review: "Review papers",
+  conference: "Conference papers",
+  journal: "Journal · peer-reviewed",
+  other: "Others",
+};
+// distinct wedge hues (Tailwind-400 family) so each sector reads clearly; used
+// translucent for the fill, stronger for the edge + label
+const NET_CAT_COLOR = {
+  review: "#a78bfa",     // violet
+  conference: "#fbbf24", // amber
+  journal: "#34d399",    // emerald
+  other: "#f472b6",      // pink
+};
+
+function renderNetwork(data) {
+  const svgEl = $("networkSvg");
+  const wrap = svgEl.parentElement;
+  const width = wrap.clientWidth || 900;
+  const height = wrap.clientHeight || 620;
+  const cx = width / 2, cy = height / 2;
+  const innerR = 64; // clear ring around the centred parent paper
+  const outerR = Math.min(width, height) / 2 - 30;
+
+  const svg = d3.select(svgEl);
+  svg.selectAll("*").remove();
+  if (networkSim) { networkSim.stop(); networkSim = null; }
+  svg.attr("viewBox", `0 0 ${width} ${height}`);
+
+  const nodes = data.nodes.map((n) => ({ ...n }));
+  const links = data.links.map((l) => ({ ...l }));
+  const adj = netAdjacency(links);
+
+  // circle radius ∝ citations (sqrt tames the spread); the seed gets a floor
+  const maxCit = d3.max(nodes, (n) => n.citations) || 1;
+  const rScale = d3.scaleSqrt().domain([0, maxCit]).range([5, 24]);
+  const radiusOf = (d) => (d.seed ? Math.max(rScale(d.citations), 15) : rScale(d.citations));
+
+  // wedge per category, angle ∝ its share of the connected (non-seed) papers
+  const neighbours = nodes.filter((n) => !n.seed);
+  const total = neighbours.length || 1;
+  const counts = {};
+  neighbours.forEach((n) => { counts[n.category] = (counts[n.category] || 0) + 1; });
+  const BASE = -Math.PI / 2; // first wedge starts at 12 o'clock
+  const sectors = {};
+  let acc = BASE;
+  NET_CAT_ORDER.forEach((cat) => {
+    const cnt = counts[cat] || 0;
+    if (!cnt) return;
+    const span = (cnt / total) * 2 * Math.PI;
+    sectors[cat] = {
+      cat, start: acc, end: acc + span, mid: acc + span / 2,
+      count: cnt, pct: Math.round((cnt / total) * 100),
+      pad: Math.min(0.07, span * 0.18),
+    };
+    acc += span;
+  });
+
+  const gSector = svg.append("g");
+  const gLink = svg.append("g");
+  const gNode = svg.append("g");
+  const tip = $("networkTip");
+
+  const polar = (a, r) => [cx + Math.cos(a) * r, cy + Math.sin(a) * r];
+  // normalise an angle into the [BASE, BASE+2π) band the wedges live in
+  const normAngle = (a) => { while (a < BASE) a += 2 * Math.PI; while (a >= BASE + 2 * Math.PI) a -= 2 * Math.PI; return a; };
+
+  // wedge fills + boundary spokes + "Name · NN%" labels
+  const sectorList = Object.values(sectors);
+  const catColor = (s) => NET_CAT_COLOR[s.cat] || "#8aa6ff";
+  gSector.selectAll("path.net-wedge").data(sectorList).join("path")
+    .attr("class", "net-wedge")
+    .attr("fill", (s) => hexToRgba(catColor(s), 0.2))
+    .attr("stroke", (s) => hexToRgba(catColor(s), 0.6))
+    .attr("d", (s) => {
+      const [x0, y0] = polar(s.start, outerR);
+      const [x1, y1] = polar(s.end, outerR);
+      const large = s.end - s.start > Math.PI ? 1 : 0;
+      return `M${cx},${cy} L${x0},${y0} A${outerR},${outerR} 0 ${large} 1 ${x1},${y1} Z`;
+    });
+  gSector.selectAll("text.net-quad-label").data(sectorList).join("text")
+    .attr("class", "net-quad-label")
+    .style("fill", (s) => catColor(s))
+    .attr("x", (s) => polar(s.mid, outerR + 16)[0])
+    .attr("y", (s) => polar(s.mid, outerR + 16)[1])
+    .attr("text-anchor", (s) => {
+      const c = Math.cos(s.mid);
+      return Math.abs(c) < 0.3 ? "middle" : c > 0 ? "start" : "end";
+    })
+    .attr("dominant-baseline", "middle")
+    .text((s) => `${NET_CAT_LABEL[s.cat]} · ${s.pct}%`);
+
+  // hold a node inside its wedge: clamp its polar angle + radius
+  function clampToSector(d, x, y) {
+    const s = sectors[d.category];
+    if (!s) return { x, y };
+    const dx = x - cx, dy = y - cy;
+    let r = Math.hypot(dx, dy) || 0.001;
+    let a = normAngle(Math.atan2(dy, dx));
+    const nr = radiusOf(d);
+    r = Math.max(innerR + nr, Math.min(outerR - nr, r));
+    a = Math.max(s.start + s.pad, Math.min(s.end - s.pad, a));
+    const [nx, ny] = polar(a, r);
+    return { x: nx, y: ny };
+  }
+
+  // seed pinned dead centre; others scattered inside their wedge
+  nodes.forEach((n) => {
+    if (n.seed) { n.x = n.fx = cx; n.y = n.fy = cy; return; }
+    const s = sectors[n.category];
+    const a = s ? s.start + s.pad + Math.random() * (s.end - s.start - 2 * s.pad) : Math.random() * 2 * Math.PI;
+    const r = innerR + 20 + Math.random() * (outerR - innerR - 40);
+    [n.x, n.y] = polar(a, r);
+  });
+
+  const link = gLink.selectAll("line").data(links).join("line").attr("class", "net-thread");
+
+  const node = gNode.selectAll("g").data(nodes).join("g")
+    .attr("class", (d) => "net-node" + (d.seed ? " net-node-seed" : ""))
+    .style("cursor", "pointer")
+    .call(d3.drag().on("start", dragStart).on("drag", dragged).on("end", dragEnd));
+
+  node.append("circle")
+    .attr("r", radiusOf)
+    .attr("fill", (d) => NET_COLORS[d.relation] || "#888")
+    .attr("stroke", (d) => (d.seed ? "#ffffff" : "rgba(255,255,255,0.3)"))
+    .attr("stroke-width", (d) => (d.seed ? 2.5 : 1));
+
+  node.append("text")
+    .attr("class", "net-label")
+    .attr("text-anchor", "middle")
+    .attr("dy", (d) => radiusOf(d) + 11)
+    .text(netLabel);
+
+  node
+    .on("mouseenter", (e, d) => { tip.classList.remove("hidden"); tip.innerHTML = netTip(d); setFocus(d.id); })
+    .on("mousemove", (e) => moveTip(e))
+    .on("click", (e, d) => { if (d.doi) window.open(d.doi, "_blank", "noopener"); });
+
+  // leaving the canvas returns the focus to the searched paper
+  d3.select(wrap).on("mouseleave", () => { tip.classList.add("hidden"); setFocus(data.seed); });
+
+  function incident(l, id) {
+    const s = l.source.id || l.source, t = l.target.id || l.target;
+    return s === id || t === id;
+  }
+
+  // shift the focus to `id` without moving anything: light up its spokes and
+  // fade everything not connected to it
+  function setFocus(id) {
+    const near = adj[id] || new Set();
+    link
+      .style("stroke", (l) => (incident(l, id) ? "#8aa6ff" : "rgba(138,166,255,0.16)"))
+      .style("stroke-opacity", (l) => (incident(l, id) ? 0.95 : 0.5))
+      .style("stroke-width", (l) => (incident(l, id) ? 1.7 : 0.7));
+    link.filter((l) => incident(l, id)).raise();
+    node.classed("net-center", (n) => n.id === id)
+      .style("opacity", (n) => (n.id === id || near.has(n.id) ? 1 : 0.4));
+  }
+
+  function moveTip(e) {
+    const r = wrap.getBoundingClientRect();
+    tip.style.left = (e.clientX - r.left + 14) + "px";
+    tip.style.top = (e.clientY - r.top + 14) + "px";
+  }
+
+  networkSim = d3.forceSimulation(nodes)
+    // link force at strength 0: resolves source/target to node refs for drawing
+    // but exerts no pull — category, not connection, drives placement
+    .force("link", d3.forceLink(links).id((d) => d.id).strength(0))
+    .force("charge", d3.forceManyBody().strength((d) => (d.seed ? 0 : -55)))
+    .force("collide", d3.forceCollide().radius((d) => radiusOf(d) + 3))
+    .force("radial", d3.forceRadial((d) => (d.seed ? 0 : (innerR + outerR) / 2), cx, cy)
+      .strength((d) => (d.seed ? 0 : 0.04)))
+    .on("tick", () => {
+      nodes.forEach((n) => {
+        if (n.seed) { n.x = cx; n.y = cy; return; }
+        const p = clampToSector(n, n.x, n.y);
+        n.x = p.x; n.y = p.y;
+      });
+      link
+        .attr("x1", (d) => d.source.x).attr("y1", (d) => d.source.y)
+        .attr("x2", (d) => d.target.x).attr("y2", (d) => d.target.y);
+      node.attr("transform", (d) => `translate(${d.x},${d.y})`);
+    });
+
+  setFocus(data.seed);
+
+  function dragStart(e, d) { if (d.seed) return; if (!e.active) networkSim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; }
+  function dragged(e, d) { if (d.seed) return; const p = clampToSector(d, e.x, e.y); d.fx = p.x; d.fy = p.y; }
+  function dragEnd(e, d) { if (d.seed) return; if (!e.active) networkSim.alphaTarget(0); d.fx = null; d.fy = null; }
 }
