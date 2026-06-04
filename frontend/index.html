@@ -59,6 +59,7 @@
   <div class="tabs">
     <button class="tab active" data-mode="single">Single paper</button>
     <button class="tab" data-mode="compare">Compare two</button>
+    <button class="tab" data-mode="journalReach">Journal reach</button>
   </div>
 
   <!-- SINGLE mode -->
@@ -130,6 +131,33 @@
       <table id="cmpJournalTable" class="facts compare-table"></table>
     </div>
   </main>
+
+  <!-- JOURNAL REACH: full-width comparison of candidate target journals -->
+  <section id="journalReachView" class="journal-reach hidden">
+    <h2 class="jr-title">Journal reach comparison</h2>
+    <p class="jr-sub">Compare candidate target journals across five reach
+      dimensions. Pick a journal to see its profile and notes.</p>
+
+    <div class="jr-tabs" id="journal-tabs"></div>
+
+    <div class="jr-detail" id="detail-panel"></div>
+
+    <div class="jr-chart-wrap">
+      <canvas id="radarChart" role="img"
+        aria-label="Radar chart comparing journals across 5 reach dimensions">
+        Select a journal above to see its reach profile.
+      </canvas>
+    </div>
+
+    <div class="jr-legend">
+      <span>Dimensions scored 1–10:</span>
+      <span>Open access</span>
+      <span>Discipline fit</span>
+      <span>Educator reach</span>
+      <span>Geographic reach</span>
+      <span>Academic citations</span>
+    </div>
+  </section>
 
   </div><!-- /main-col -->
 

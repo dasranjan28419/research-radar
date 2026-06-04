@@ -72,18 +72,28 @@ queryInput.addEventListener("keydown", (e) => {
   if (e.key === "Enter") run();
 });
 
-// ---- mode tabs (single vs compare) ----
+// ---- mode tabs (single vs compare vs journal reach) ----
 document.querySelectorAll(".tab").forEach((tab) => {
   tab.addEventListener("click", () => {
     document.querySelectorAll(".tab").forEach((t) => t.classList.remove("active"));
     tab.classList.add("active");
-    const compare = tab.dataset.mode === "compare";
-    $("singleSearch").classList.toggle("hidden", compare);
+    const mode = tab.dataset.mode;
+    const journalReach = mode === "journalReach";
+    const compare = mode === "compare";
+
+    // search rows + result views are only used by the paper-centric modes
+    $("singleSearch").classList.toggle("hidden", compare || journalReach);
     $("compareSearch").classList.toggle("hidden", !compare);
     $("results").classList.add("hidden");
     $("compareResults").classList.add("hidden");
     $("authorPanel").classList.add("hidden");
     $("candidates").classList.add("hidden");
+
+    // the journal-reach view spans the whole width — hide the feature sidebar
+    $("featurePanel").classList.toggle("hidden", journalReach);
+    $("journalReachView").classList.toggle("hidden", !journalReach);
+    if (journalReach) initJournalReach();
+
     setStatus("");
   });
 });
@@ -462,4 +472,228 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])
   );
+}
+
+/* =====================================================================
+ * Journal reach comparison (third tab)
+ * A static, curated comparison of candidate target journals across five
+ * reach dimensions (scored 1–10). Pick a journal to see its profile.
+ * ===================================================================== */
+const jrDims = ["Open access", "Discipline fit", "Educator reach", "Geographic reach", "Academic citations"];
+const jrJournals = [
+  {
+    name: "CAEE", full: "Computer Applications in Engineering Education",
+    publisher: "Wiley", if: "2.2", access: "paid", quartile: "Q1",
+    scores: [3, 9, 7, 9, 7], color: "#4f9dff",
+    notes: [
+      "Paywalled — limits casual readership",
+      "Exact scope match: GUI tools, simulation, visualization",
+      "Read by educators adopting software tools",
+      "Global engineering education audience",
+      "Q1 Scopus, SCIE indexed — strong citation potential",
+    ],
+  },
+  {
+    name: "JEE", full: "Journal of Engineering Education",
+    publisher: "ASEE", if: "6.06", access: "paid", quartile: "Q1",
+    scores: [3, 5, 6, 10, 10], color: "#7b6bff",
+    notes: [
+      "Paywalled — but many institutions subscribe",
+      "Broader scope; needs strong pedagogy framing",
+      "8,500+ subscribers across ~100 countries",
+      "Widest international reach of all options",
+      "Highest IF (6.06) — maximum citation impact",
+    ],
+  },
+  {
+    name: "EJEE", full: "European Journal of Engineering Education",
+    publisher: "SEFI / Taylor & Francis", if: "2.8", access: "paid", quartile: "Q1",
+    scores: [3, 6, 7, 8, 8], color: "#1d9e75",
+    notes: [
+      "Paywalled but widely institutional access in Europe",
+      "Good fit for pedagogy + tool effectiveness evidence",
+      "Strong readership among European engineering faculty",
+      "International but Europe-centric audience",
+      "IF 2.8, CiteScore 8.1 — rising fast",
+    ],
+  },
+  {
+    name: "iJEP", full: "International Journal of Engineering Pedagogy",
+    publisher: "Online Journals", if: "1.7", access: "open", quartile: "Q3",
+    scores: [10, 8, 8, 7, 4], color: "#d85a30",
+    notes: [
+      "Fully open access — anyone can read for free",
+      "Name directly matches: engineering pedagogy",
+      "Free access means higher downloads from educators",
+      "International readership, growing community",
+      "Lower IF (1.7) — fewer academic citations",
+    ],
+  },
+  {
+    name: "JCEE", full: "Journal of Civil Engineering Education",
+    publisher: "ASCE", if: "1.8", access: "paid", quartile: "Q2",
+    scores: [3, 10, 9, 6, 5], color: "#ba7517",
+    notes: [
+      "Paywalled — ASCE membership helps access",
+      "Perfect discipline fit: beams, SFD, BMD, Mohr's circle",
+      "Read by the exact educators who teach these topics",
+      "Primarily US/international civil engineering community",
+      "Smaller journal (28 papers/yr) — niche but targeted",
+    ],
+  },
+  {
+    name: "IEEE Trans.", full: "IEEE Transactions on Education",
+    publisher: "IEEE", if: "2.1", access: "paid", quartile: "Q2",
+    scores: [3, 5, 6, 8, 7], color: "#ff7a59",
+    notes: [
+      "Paywalled — IEEE membership widely held",
+      "Better fit if paper is software/code-heavy",
+      "Reaches electrical, CS, and technical educators",
+      "Strong global IEEE membership base",
+      "Respected indexing — good citation profile",
+    ],
+  },
+  {
+    name: "IJEE", full: "International Journal of Engineering Education",
+    publisher: "Tempus Publications", if: "1.0", access: "paid", quartile: "Q3",
+    scores: [3, 7, 6, 9, 5], color: "#e0b34a",
+    notes: [
+      "Paywalled — moderate institutional access",
+      "Broad engineering-education scope, accepts tool papers",
+      "Established readership among engineering faculty",
+      "Long-running journal with wide international spread",
+      "Lower IF but extensive back-catalogue and indexing",
+    ],
+  },
+  {
+    name: "SEE", full: "Studies in Engineering Education",
+    publisher: "VT Publishing", if: "n/a", access: "open", quartile: "—",
+    scores: [10, 6, 7, 7, 3], color: "#3fc8c0",
+    notes: [
+      "Diamond open access — no fees to read or publish",
+      "Focus on engineering-education research methods",
+      "Read by the engineering-education research community",
+      "Growing international author and reader base",
+      "Young journal — citation track record still building",
+    ],
+  },
+  {
+    name: "AJEE", full: "Australasian Journal of Engineering Education",
+    publisher: "Taylor & Francis", if: "1.5", access: "paid", quartile: "Q3",
+    scores: [3, 7, 6, 5, 4], color: "#c77dff",
+    notes: [
+      "Paywalled — strongest access within Australasia",
+      "Welcomes teaching-practice and tool-adoption papers",
+      "Read by educators across Australia and New Zealand",
+      "Regionally focused but internationally indexed",
+      "Modest IF — solid for a regional society journal",
+    ],
+  },
+  {
+    name: "CEE", full: "Chemical Engineering Education",
+    publisher: "ASEE ChE Division", if: "n/a", access: "open", quartile: "—",
+    scores: [9, 8, 8, 6, 4], color: "#ff9bb3",
+    notes: [
+      "Open access — freely downloadable issues",
+      "Tightly scoped to chemical-engineering teaching",
+      "Read by ChE educators who adopt classroom tools",
+      "Primarily US/international ChE community",
+      "Niche but loyal readership; limited IF data",
+    ],
+  },
+];
+
+let jrActive = 0;
+let jrChart = null;
+let jrInitialised = false;
+
+function initJournalReach() {
+  if (jrInitialised) return;
+  jrInitialised = true;
+  jrRenderTabs();
+  jrRenderDetail();
+  jrUpdateChart();
+}
+
+function jrRenderTabs() {
+  const container = $("journal-tabs");
+  container.innerHTML = "";
+  jrJournals.forEach((j, i) => {
+    const btn = document.createElement("button");
+    btn.className = "jr-tab" + (i === jrActive ? " active" : "");
+    btn.textContent = j.name;
+    if (i === jrActive) btn.style.borderColor = j.color;
+    btn.onclick = () => {
+      jrActive = i;
+      jrRenderTabs();
+      jrRenderDetail();
+      jrUpdateChart();
+    };
+    container.appendChild(btn);
+  });
+}
+
+function jrRenderDetail() {
+  const j = jrJournals[jrActive];
+  $("detail-panel").innerHTML =
+    `<div class="jr-detail-head">
+      <div>
+        <p class="jr-name">${escapeHtml(j.full)}</p>
+        <p class="jr-pub">${escapeHtml(j.publisher)} · IF ${escapeHtml(j.if)} · ${escapeHtml(j.quartile)} Scopus</p>
+      </div>
+      <span class="jr-access ${j.access === "open" ? "open" : "paid"}">${j.access === "open" ? "Open access" : "Paywalled"}</span>
+    </div>
+    <div>` +
+    jrDims.map((d, i) =>
+      `<div class="jr-dim-row">
+        <span class="jr-dim-label">${d}</span>
+        <div class="jr-bar-track"><div class="jr-bar-fill" style="width:${j.scores[i] * 10}%;background:${j.color};"></div></div>
+        <span class="jr-dim-val">${j.scores[i]}/10</span>
+      </div>
+      <p class="jr-note">${escapeHtml(j.notes[i])}</p>`
+    ).join("") +
+    `</div>`;
+}
+
+function jrUpdateChart() {
+  const j = jrJournals[jrActive];
+  if (jrChart) {
+    const ds = jrChart.data.datasets[0];
+    ds.data = j.scores;
+    ds.label = j.name;
+    ds.borderColor = j.color;
+    ds.backgroundColor = hexToRgba(j.color, 0.14);
+    ds.pointBackgroundColor = j.color;
+    jrChart.update();
+    return;
+  }
+  jrChart = new Chart($("radarChart").getContext("2d"), {
+    type: "radar",
+    data: {
+      labels: jrDims,
+      datasets: [{
+        label: j.name,
+        data: j.scores,
+        fill: true,
+        borderColor: j.color,
+        backgroundColor: hexToRgba(j.color, 0.14),
+        pointBackgroundColor: j.color,
+        pointRadius: 3,
+        borderWidth: 2,
+      }],
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        r: {
+          min: 0, max: 10,
+          ticks: { stepSize: 2, color: "#7e87b3", backdropColor: "transparent" },
+          grid: { color: "#2c3257" },
+          angleLines: { color: "#2c3257" },
+          pointLabels: { color: "#cfd6ff", font: { size: 11 } },
+        },
+      },
+    },
+  });
 }

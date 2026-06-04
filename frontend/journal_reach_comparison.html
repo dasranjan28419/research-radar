@@ -1,0 +1,239 @@
+
+<h2 class="sr-only">Interactive comparison of 6 engineering education journals across 5 reach dimensions: open access, discipline fit, audience type, geographic reach, and academic citations.</h2>
+
+<style>
+.jcard { background: var(--color-background-primary); border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-lg); padding: 1rem 1.25rem; cursor: pointer; transition: border-color 0.15s; }
+.jcard.active { border: 2px solid #378ADD; }
+.jcard:hover { border-color: var(--color-border-secondary); }
+.bar-track { background: var(--color-background-secondary); border-radius: 4px; height: 8px; flex: 1; overflow: hidden; }
+.bar-fill { height: 100%; border-radius: 4px; transition: width 0.4s ease; }
+.badge { font-size: 11px; font-weight: 500; padding: 2px 8px; border-radius: var(--border-radius-md); display: inline-block; }
+.badge-oa { background: #E1F5EE; color: #085041; }
+.badge-paid { background: #F1EFE8; color: #444441; }
+.dim-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.dim-label { font-size: 12px; color: var(--color-text-secondary); width: 130px; flex-shrink: 0; }
+.dim-val { font-size: 12px; font-weight: 500; color: var(--color-text-primary); width: 28px; text-align: right; flex-shrink: 0; }
+</style>
+
+<div style="padding: 1rem 0 0;">
+
+  <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 1.5rem;" id="journal-tabs">
+  </div>
+
+  <div id="detail-panel" style="background: var(--color-background-secondary); border-radius: var(--border-radius-lg); padding: 1.25rem; margin-bottom: 1.5rem;">
+  </div>
+
+  <div style="position: relative; width: 100%; height: 320px;">
+    <canvas id="radarChart" role="img" aria-label="Radar chart comparing journals across 5 reach dimensions">Select a journal above to see its reach profile.</canvas>
+  </div>
+
+  <div style="display: flex; flex-wrap: wrap; gap: 12px; margin-top: 1rem; font-size: 11px; color: var(--color-text-secondary);">
+    <span>Dimensions scored 1–10:</span>
+    <span style="display:flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;border-radius:2px;background:#378ADD;opacity:0.3"></span> Open access</span>
+    <span style="display:flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;border-radius:2px;background:#378ADD;opacity:0.3"></span> Discipline fit</span>
+    <span style="display:flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;border-radius:2px;background:#378ADD;opacity:0.3"></span> Educator reach</span>
+    <span style="display:flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;border-radius:2px;background:#378ADD;opacity:0.3"></span> Geographic reach</span>
+    <span style="display:flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;border-radius:2px;background:#378ADD;opacity:0.3"></span> Academic citations</span>
+  </div>
+
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+const journals = [
+  {
+    id: 'caee',
+    name: 'CAEE',
+    full: 'Computer Applications in Engineering Education',
+    publisher: 'Wiley',
+    if: '2.2',
+    access: 'paid',
+    quartile: 'Q1',
+    scores: [3, 9, 7, 9, 7],
+    notes: [
+      'Paywalled — limits casual readership',
+      'Exact scope match: GUI tools, simulation, visualization',
+      'Read by educators adopting software tools',
+      'Global engineering education audience',
+      'Q1 Scopus, SCIE indexed — strong citation potential'
+    ],
+    color: '#378ADD'
+  },
+  {
+    id: 'jee',
+    name: 'JEE',
+    full: 'Journal of Engineering Education',
+    publisher: 'ASEE',
+    if: '6.06',
+    access: 'paid',
+    quartile: 'Q1',
+    scores: [3, 5, 6, 10, 10],
+    notes: [
+      'Paywalled — but many institutions subscribe',
+      'Broader scope; needs strong pedagogy framing',
+      '8,500+ subscribers across ~100 countries',
+      'Widest international reach of all options',
+      'Highest IF (6.06) — maximum citation impact'
+    ],
+    color: '#534AB7'
+  },
+  {
+    id: 'ejee',
+    name: 'EJEE',
+    full: 'European Journal of Engineering Education',
+    publisher: 'SEFI',
+    if: '2.8',
+    access: 'paid',
+    quartile: 'Q1',
+    scores: [3, 6, 7, 8, 8],
+    notes: [
+      'Paywalled but widely institutional access in Europe',
+      'Good fit for pedagogy + tool effectiveness evidence',
+      'Strong readership among European engineering faculty',
+      'International but Europe-centric audience',
+      'IF 2.8, CiteScore 8.1 — rising fast'
+    ],
+    color: '#1D9E75'
+  },
+  {
+    id: 'ijep',
+    name: 'iJEP',
+    full: 'International Journal of Engineering Pedagogy',
+    publisher: 'Online Journals',
+    if: '1.7',
+    access: 'open',
+    quartile: 'Q3',
+    scores: [10, 8, 8, 7, 4],
+    notes: [
+      'Fully open access — anyone can read for free',
+      'Name directly matches: engineering pedagogy',
+      'Free access means higher downloads from educators',
+      'International readership, growing community',
+      'Lower IF (1.7) — fewer academic citations'
+    ],
+    color: '#D85A30'
+  },
+  {
+    id: 'jcee',
+    name: 'JCEE',
+    full: 'Journal of Civil Engineering Education',
+    publisher: 'ASCE',
+    if: '1.8',
+    access: 'paid',
+    quartile: 'Q2',
+    scores: [3, 10, 9, 6, 5],
+    notes: [
+      'Paywalled — ASCE membership helps access',
+      'Perfect discipline fit: beams, SFD, BMD, Mohr\'s circle',
+      'Read by the exact educators who teach these topics',
+      'Primarily US/international civil engineering community',
+      'Smaller journal (28 papers/yr) — niche but targeted'
+    ],
+    color: '#BA7517'
+  },
+  {
+    id: 'ieee',
+    name: 'IEEE Trans.',
+    full: 'IEEE Transactions on Education',
+    publisher: 'IEEE',
+    if: '~2.1',
+    access: 'paid',
+    quartile: 'Q2',
+    scores: [3, 5, 6, 8, 7],
+    notes: [
+      'Paywalled — IEEE membership widely held',
+      'Better fit if paper is software/code-heavy',
+      'Reaches electrical, CS, and technical educators',
+      'Strong global IEEE membership base',
+      'Respected indexing — good citation profile'
+    ],
+    color: '#888780'
+  }
+];
+
+const dims = ['Open access', 'Discipline fit', 'Educator reach', 'Geographic reach', 'Academic citations'];
+let activeIdx = 0;
+let chart = null;
+
+function renderTabs() {
+  const container = document.getElementById('journal-tabs');
+  container.innerHTML = '';
+  journals.forEach((j, i) => {
+    const btn = document.createElement('button');
+    btn.style.cssText = `background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:6px 14px;font-size:13px;font-weight:${i===activeIdx?'500':'400'};color:${i===activeIdx?j.color:'var(--color-text-secondary)'};cursor:pointer;${i===activeIdx?'border-color:'+j.color+';border-width:1.5px;':''}`;
+    btn.textContent = j.name;
+    btn.onclick = () => { activeIdx = i; renderTabs(); renderDetail(); updateChart(); };
+    container.appendChild(btn);
+  });
+}
+
+function renderDetail() {
+  const j = journals[activeIdx];
+  const panel = document.getElementById('detail-panel');
+  panel.innerHTML = `
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
+      <div>
+        <p style="font-size:15px;font-weight:500;margin:0 0 2px;color:var(--color-text-primary);">${j.full}</p>
+        <p style="font-size:12px;color:var(--color-text-secondary);margin:0;">${j.publisher} &nbsp;·&nbsp; IF ${j.if} &nbsp;·&nbsp; ${j.quartile} Scopus</p>
+      </div>
+      <span class="badge ${j.access==='open'?'badge-oa':'badge-paid'}">${j.access==='open'?'Open access':'Paywalled'}</span>
+    </div>
+    <div>
+      ${dims.map((d,i) => `
+        <div class="dim-row">
+          <span class="dim-label">${d}</span>
+          <div class="bar-track"><div class="bar-fill" style="width:${j.scores[i]*10}%;background:${j.color};"></div></div>
+          <span class="dim-val">${j.scores[i]}/10</span>
+        </div>
+        <p style="font-size:11px;color:var(--color-text-secondary);margin:-6px 0 10px 140px;">${j.notes[i]}</p>
+      `).join('')}
+    </div>
+  `;
+}
+
+function updateChart() {
+  const j = journals[activeIdx];
+  if (chart) {
+    chart.data.datasets[0].data = j.scores;
+    chart.data.datasets[0].borderColor = j.color;
+    chart.data.datasets[0].backgroundColor = j.color + '22';
+    chart.data.datasets[0].pointBackgroundColor = j.color;
+    chart.data.datasets[0].label = j.name;
+    chart.update();
+  } else {
+    chart = new Chart(document.getElementById('radarChart'), {
+      type: 'radar',
+      data: {
+        labels: dims,
+        datasets: [{
+          label: j.name,
+          data: j.scores,
+          borderColor: j.color,
+          backgroundColor: j.color + '22',
+          pointBackgroundColor: j.color,
+          pointRadius: 4,
+          borderWidth: 2
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          r: {
+            min: 0, max: 10,
+            ticks: { stepSize: 2, font: { size: 11 }, color: '#888780', backdropColor: 'transparent' },
+            pointLabels: { font: { size: 12 }, color: '#444441' },
+            grid: { color: 'rgba(136,135,128,0.2)' },
+            angleLines: { color: 'rgba(136,135,128,0.2)' }
+          }
+        }
+      }
+    });
+  }
+}
+
+renderTabs();
+renderDetail();
+updateChart();
+</script>
